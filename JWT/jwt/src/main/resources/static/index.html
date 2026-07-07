@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>JWT Security Console</title>
+</head>
+<body>
+
+    <h1>JWT Security Console</h1>
+    <hr>
+
+    <!-- 1. User Registration Form -->
+    <h2>1. User Registration</h2>
+    <form id="registerForm">
+        <p>
+            <label>Name:</label><br>
+            <input type="text" name="name" required>
+        </p>
+        <p>
+            <label>Email:</label><br>
+            <input type="email" name="email" required>
+        </p>
+        <p>
+            <label>Password:</label><br>
+            <input type="password" name="password" required>
+        </p>
+        <p>
+            <label>Role:</label><br>
+            <select name="role">
+                <option value="USER">USER</option>
+                <option value="ADMIN">ADMIN</option>
+            </select>
+        </p>
+        <button type="submit">Submit Registration</button>
+    </form>
+    <hr>
+
+    <!-- 2. User Login Form -->
+    <h2>2. User Login</h2>
+    <form id="loginForm">
+        <p>
+            <label>Email:</label><br>
+            <input type="email" name="email" required>
+        </p>
+        <p>
+            <label>Password:</label><br>
+            <input type="password" name="password" required>
+        </p>
+        <button type="submit">Submit Login</button>
+    </form>
+    <hr>
+
+    <!-- 3. Decoded Token & User Details -->
+    <h2>3. My Profile Details</h2>
+    <div id="detailsContainer" style="display: none; padding: 15px; border: 1px solid #badbcc; background-color: #d1e7dd; border-radius: 5px;">
+        <h3 style="color: #0f5132; margin-top: 0;">Successfully Authenticated!</h3>
+        <p><strong>Decoded User Session Claims:</strong></p>
+        <ul>
+            <li><strong>User Email (Subject):</strong> <span id="detailEmail"></span></li>
+            <li><strong>Issued At:</strong> <span id="detailIat"></span></li>
+            <li><strong>Expires At:</strong> <span id="detailExp"></span></li>
+        </ul>
+        <p><strong>Raw JWT Token:</strong></p>
+        <pre id="rawToken" style="word-break: break-all; background-color: #fff; padding: 10px; border: 1px solid #ccc;"></pre>
+        <button onclick="logout()">Logout / Clear Token</button>
+    </div>
+    <div id="noDetailsMessage" style="color: #664d03; background-color: #fff3cd; padding: 10px; border: 1px solid #ffecb5; border-radius: 5px;">
+        Please log in above to view your profile details.
+    </div>
+
+    <script>
+        // Extremely robust base URL detection for filesystem file:// protocol, local storage, and null origins
+        const baseUrl = (window.location.protocol === 'file:' || !window.location.origin || window.location.origin === 'null') 
+            ? 'http://localhost:8080' 
+            : window.location.origin;
+
+        // Initialize display state on load
+        window.addEventListener('DOMContentLoaded', () => {
+            const savedToken = localStorage.getItem('jwt_token');
+            if (savedToken) {
+                displayDetails(savedToken);
+            }
+        });
+
+        // Event listeners
+        document.getElementById('registerForm').addEventListener('submit', (e) => handleAuth(e, '/api/v1/auth/register', 'Registration'));
+        document.getElementById('loginForm').addEventListener('submit', (e) => handleAuth(e, '/api/v1/auth/authenticate', 'Login'));
+
+        async function handleAuth(event, endpoint, actionName) {
+            event.preventDefault();
+            const form = event.target;
+            const formData = new URLSearchParams(new FormData(form));
+
+            try {
+                const targetUrl = `${baseUrl}${endpoint}`;
+                console.log(`Sending request to: ${targetUrl}`);
+                
+                const response = await fetch(targetUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (response.ok && data.token) {
+                    alert(`${actionName} successful!`);
+                    localStorage.setItem('jwt_token', data.token);
+                    displayDetails(data.token);
+                    form.reset();
+                } else {
+                    alert(`${actionName} failed: ${data.message || 'Check your credentials.'}`);
+                }
+            } catch (error) {
+                console.error(error);
+                alert(`Network error: ${error.message}\n\nTroubleshooting Tip:\n1. Make sure your Spring Boot backend is running.\n2. Access the console via http://localhost:8080/index.html to prevent file-system CORS restrictions.`);
+            }
+        }
+
+        function displayDetails(token) {
+            try {
+                const parts = token.split('.');
+                if (parts.length !== 3) return;
+
+                // Decode Base64URL claims payload
+                const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+
+                // Map values to DOM
+                document.getElementById('detailEmail').innerText = payload.sub || 'N/A';
+                document.getElementById('detailIat').innerText = payload.iat ? new Date(payload.iat * 1000).toLocaleString() : 'N/A';
+                document.getElementById('detailExp').innerText = payload.exp ? new Date(payload.exp * 1000).toLocaleString() : 'N/A';
+                document.getElementById('rawToken').innerText = token;
+
+                // Show details, hide placeholder
+                document.getElementById('detailsContainer').style.display = 'block';
+                document.getElementById('noDetailsMessage').style.display = 'none';
+            } catch (e) {
+                console.error("Failed to decode token", e);
+            }
+        }
+
+        function logout() {
+            localStorage.removeItem('jwt_token');
+            document.getElementById('detailsContainer').style.display = 'none';
+            document.getElementById('noDetailsMessage').style.display = 'block';
+            alert('Logged out successfully.');
+        }
+    </script>
+</body>
+</html>
